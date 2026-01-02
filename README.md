@@ -29,6 +29,13 @@ pip install fsutils
 pip install fsutils[dev]
 ```
 
+### Development Installation (Editable)
+
+For contributing or modifying the source code, install in editable mode:
+
+```bash
+pip install -e .
+
 ---
 
 ## Quick Start
