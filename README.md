@@ -35,6 +35,7 @@ For contributing or modifying the source code, install in editable mode:
 
 ```bash
 pip install -e .
+```
 
 ---
 
