@@ -37,6 +37,14 @@ For contributing or modifying the source code, install in editable mode:
 pip install -e .
 ```
 
+### Install from GitHub
+
+Install the latest version directly from GitHub:
+
+```bash
+pip install git+ssh://git@github.com:droyed/fsutils.git
+```
+
 ---
 
 ## Quick Start
