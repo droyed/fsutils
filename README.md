@@ -177,11 +177,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Changelog
 
-### v0.1.0 (2024-01-01)
-
-- Initial release
-- `DirManager` class with core directory and file operations
-- `io` module for standalone file I/O
-- Extension filtering support (images, videos, audio, documents)
-- Directory statistics display
-- Full type annotation support
+See [CHANGELOG.md](CHANGELOG.md) for the full changelog.
