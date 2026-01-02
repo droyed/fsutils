@@ -42,7 +42,7 @@ pip install -e .
 Install the latest version directly from GitHub:
 
 ```bash
-pip install git+ssh://git@github.com:droyed/fsutils.git
+pip install git+https://github.com/droyed/fsutils.git
 ```
 
 ---
