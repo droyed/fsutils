@@ -226,11 +226,11 @@ class TestErrorHandling:
             dm.delete_dir("file.txt")
 
     def test_list_nonexistent_directory(self, temp_dir):
-        """Test listing a non-existent directory raises FileNotFoundError."""
+        """Test listing a non-existent directory raises NotADirectoryError via scan."""
         dm = DirManager(str(temp_dir))
 
-        with pytest.raises(FileNotFoundError):
-            dm.list_dir("nonexistent")
+        with pytest.raises(NotADirectoryError):
+            dm.scan("nonexistent")
 
     def test_invalid_hash_algorithm(self, temp_dir):
         """Test using an invalid hash algorithm raises ValueError."""

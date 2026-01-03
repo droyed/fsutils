@@ -9,12 +9,14 @@ A Python package providing `DirManager` class for directory/file operations and 
 ## Features
 
 - **Directory Management**: Create, list, and delete directories with `DirManager`
+- **Optimized Scanning**: `scan()` method with Schwartzian Transform for efficient metadata retrieval
 - **File Operations**: Copy, move, and delete files within a directory context
 - **Pattern Matching**: Find files using glob patterns
 - **Directory Traversal**: Walk through directory trees with `Path` objects
 - **Extension Filtering**: List files by type (images, videos, audio, documents)
 - **Statistics**: Display directory statistics with file breakdown
 - **Standalone I/O**: Simple file read/write operations with `io` module
+- **Directory Utilities**: Simple directory functions with `dirs` module
 - **Type Hints**: Full type annotation support
 
 ## Installation
@@ -50,13 +52,17 @@ pip install git+https://github.com/droyed/fsutils.git
 ## Quick Start
 
 ```python
-from fsutils import DirManager, io
+from fsutils import DirManager, io, dirs
 
 # Directory operations with DirManager
 dm = DirManager("/path/to/project")
 
 # Create directories
 dm.create_dir("data/output")
+
+# Simple directory utilities with dirs module
+dirs.mkdir("temp")
+dirs.mkdirs(["cache", "logs", "backups"])
 
 # List all Python files
 py_files = dm.list_files(extensions=['.py'])
@@ -159,6 +165,7 @@ For complete documentation, see:
 
 - **[docs/USAGE_DirManager.md](docs/USAGE_DirManager.md)** - Comprehensive `DirManager` usage guide
 - **[docs/USAGE_io.md](docs/USAGE_io.md)** - Comprehensive `io` module documentation
+- **[docs/USAGE_dirs.md](docs/USAGE_dirs.md)** - Comprehensive `dirs` module documentation
 - **[src/fsutils/io.py](src/fsutils/io.py)** - `io` module source code
 
 ---

@@ -58,13 +58,13 @@ class TestDirManager:
         assert new_dir.exists()
         assert new_dir.is_dir()
 
-    def test_list_dir(self, dm, temp_dir):
-        """Test listing directory contents."""
+    def test_scan(self, dm, temp_dir):
+        """Test listing directory contents via scan."""
         (temp_dir / "file1.txt").write_text("content1")
         (temp_dir / "file2.txt").write_text("content2")
         (temp_dir / "subdir").mkdir()
 
-        contents = dm.list_dir()
+        contents = dm.scan()
         names = [p.name for p in contents]
 
         assert "file1.txt" in names
@@ -170,47 +170,48 @@ class TestDirManager:
         depth_1_files = dm.list_files(max_depth=1)
         assert len(depth_1_files) == 2
 
-    def test_list_dir_sort_by_name(self, dm, temp_dir):
-        """Test listing directory sorted by name."""
+    def test_scan_sort_by_name(self, dm, temp_dir):
+        """Test scan sorted by name (case-insensitive)."""
         (temp_dir / "z_file.txt").write_text("content")
         (temp_dir / "a_file.txt").write_text("content")
         (temp_dir / "m_file.txt").write_text("content")
 
-        contents = dm.list_dir(sort_by='name')
+        contents = dm.scan(sort_by='name')
         names = [p.name for p in contents]
+        # Case-insensitive sorting: M comes before z, a comes first
         assert names == ['a_file.txt', 'm_file.txt', 'z_file.txt']
 
-        contents_rev = dm.list_dir(sort_by='name', reverse=True)
+        contents_rev = dm.scan(sort_by='name', reverse=True)
         names_rev = [p.name for p in contents_rev]
         assert names_rev == ['z_file.txt', 'm_file.txt', 'a_file.txt']
 
-    def test_list_dir_sort_by_mtime(self, dm, temp_dir):
-        """Test listing directory sorted by modification time."""
+    def test_scan_sort_by_mtime(self, dm, temp_dir):
+        """Test scan sorted by modification time."""
         (temp_dir / "old_file.txt").write_text("old content")
         time.sleep(0.01)  # Ensure different mtime
         (temp_dir / "new_file.txt").write_text("new content")
 
-        contents = dm.list_dir(sort_by='mtime')
+        contents = dm.scan(sort_by='mtime')
         names = [p.name for p in contents]
         assert names[0] == 'old_file.txt'
         assert names[1] == 'new_file.txt'
 
-    def test_list_dir_sort_by_size(self, dm, temp_dir):
-        """Test listing directory sorted by file size."""
+    def test_scan_sort_by_size(self, dm, temp_dir):
+        """Test scan sorted by file size."""
         (temp_dir / "small.txt").write_text("small")
         (temp_dir / "large.txt").write_text("larger content here")
         (temp_dir / "medium.txt").write_text("medium")
 
-        contents = dm.list_dir(sort_by='size')
+        contents = dm.scan(sort_by='size')
         names = [p.name for p in contents]
         assert names == ['small.txt', 'medium.txt', 'large.txt']
 
-    def test_list_dir_no_sort(self, dm, temp_dir):
-        """Test listing directory without sorting (default behavior)."""
+    def test_scan_no_sort(self, dm, temp_dir):
+        """Test scan without sorting (default behavior)."""
         (temp_dir / "z_file.txt").write_text("content")
         (temp_dir / "a_file.txt").write_text("content")
 
-        contents = dm.list_dir()  # No sort_by parameter
+        contents = dm.scan()  # No sort_by parameter
         assert len(contents) == 2
 
     def test_list_files_sort_by_name(self, dm, temp_dir):
@@ -358,3 +359,310 @@ class TestDirManager:
         output = captured_output.getvalue()
         assert "📁" in output
         assert "Files:" in output
+
+    # =======================================================================
+    # Tests for relative path parameter
+    # =======================================================================
+
+    def test_scan_relative_false(self, dm, temp_dir):
+        """Test scan returns absolute paths by default."""
+        (temp_dir / "file1.txt").write_text("content")
+        (temp_dir / "subdir").mkdir()
+
+        contents = dm.scan()
+        assert all(p.is_absolute() for p in contents)
+        assert contents[0].parent == temp_dir
+
+    def test_scan_relative_true(self, dm, temp_dir):
+        """Test scan returns relative paths when relative=True."""
+        (temp_dir / "file1.txt").write_text("content")
+        (temp_dir / "subdir").mkdir()
+
+        contents = dm.scan(relative=True)
+        assert all(not p.is_absolute() for p in contents)
+        names = [p.name for p in contents]
+        assert "file1.txt" in names
+        assert "subdir" in names
+
+    def test_list_files_relative_false(self, dm, temp_dir):
+        """Test list_files returns absolute paths by default."""
+        (temp_dir / "file1.txt").write_text("content")
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "file2.txt").write_text("content")
+
+        files = dm.list_files()
+        assert all(p.is_absolute() for p in files)
+        # All files should be under temp_dir
+        assert all(temp_dir in p.parents for p in files)
+
+    def test_list_files_relative_true(self, dm, temp_dir):
+        """Test list_files returns relative paths when relative=True."""
+        (temp_dir / "file1.txt").write_text("content")
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "file2.txt").write_text("content")
+
+        files = dm.list_files(relative=True)
+        assert all(not p.is_absolute() for p in files)
+        names = [p.name for p in files]
+        assert "file1.txt" in names
+        assert "file2.txt" in names
+        # Check that nested path is relative
+        nested_files = [p for p in files if p.parts[0] == "dir1"]
+        assert len(nested_files) == 1
+
+    def test_list_files_relative_with_extensions(self, dm, temp_dir):
+        """Test list_files with extensions and relative=True."""
+        (temp_dir / "file1.py").write_text("content")
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "file2.py").write_text("content")
+        (temp_dir / "file3.txt").write_text("content")
+
+        files = dm.list_files(extensions=[".py"], relative=True)
+        assert all(not p.is_absolute() for p in files)
+        assert all(p.suffix == ".py" for p in files)
+        assert len(files) == 2
+
+    def test_list_images_relative_false(self, dm, temp_dir):
+        """Test list_images returns absolute paths by default."""
+        (temp_dir / "image1.jpg").write_bytes(b"\x00\x01\x02")
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "image2.png").write_bytes(b"\x00\x01\x02\x03")
+
+        images = dm.list_images()
+        assert all(p.is_absolute() for p in images)
+
+    def test_list_images_relative_true(self, dm, temp_dir):
+        """Test list_images returns relative paths when relative=True."""
+        (temp_dir / "image1.jpg").write_bytes(b"\x00\x01\x02")
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "image2.png").write_bytes(b"\x00\x01\x02\x03")
+
+        images = dm.list_images(relative=True)
+        assert all(not p.is_absolute() for p in images)
+        names = [p.name for p in images]
+        assert "image1.jpg" in names
+        assert "image2.png" in names
+
+    def test_glob_relative_false(self, dm, temp_dir):
+        """Test glob returns absolute paths by default."""
+        (temp_dir / "file1.py").write_text("# Python")
+        (temp_dir / "file2.py").write_text("# Python")
+
+        py_files = dm.glob("*.py")
+        assert all(p.is_absolute() for p in py_files)
+        assert py_files[0].parent == temp_dir
+
+    def test_glob_relative_true(self, dm, temp_dir):
+        """Test glob returns relative paths when relative=True."""
+        (temp_dir / "file1.py").write_text("# Python")
+        (temp_dir / "file2.py").write_text("# Python")
+
+        py_files = dm.glob("*.py", relative=True)
+        assert all(not p.is_absolute() for p in py_files)
+        names = [p.name for p in py_files]
+        assert "file1.py" in names
+        assert "file2.py" in names
+
+    def test_walk_relative_false(self, dm, temp_dir):
+        """Test walk yields paths (dirnames/filenames relative to dirpath)."""
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "file1.txt").write_text("content")
+        (temp_dir / "dir2").mkdir()
+        (temp_dir / "dir2" / "file2.txt").write_text("content")
+
+        for dirpath, dirnames, filenames in dm.walk():
+            # dirpath is absolute
+            assert dirpath.is_absolute()
+            # dirnames and filenames are relative to dirpath
+            assert all(not d.is_absolute() for d in dirnames)
+            assert all(not f.is_absolute() for f in filenames)
+
+    def test_walk_relative_true(self, dm, temp_dir):
+        """Test walk yields relative paths when relative=True."""
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "file1.txt").write_text("content")
+        (temp_dir / "dir2").mkdir()
+        (temp_dir / "dir2" / "file2.txt").write_text("content")
+
+        for dirpath, dirnames, filenames in dm.walk(relative=True):
+            assert not dirpath.is_absolute()
+            assert not dirpath.parts[0] == str(temp_dir.parts[0]) if dirpath.parts else True
+            assert all(not d.is_absolute() for d in dirnames)
+            assert all(not f.is_absolute() for f in filenames)
+
+    def test_walk_relative_nested_paths(self, dm, temp_dir):
+        """Test walk with relative=True returns correct nested paths."""
+        (temp_dir / "root_dir").mkdir()
+        (temp_dir / "root_dir" / "subdir").mkdir()
+        (temp_dir / "root_dir" / "subdir" / "file.txt").write_text("content")
+
+        for dirpath, dirnames, filenames in dm.walk(relative=True):
+            if filenames:
+                # All paths should be relative to base_dir
+                assert not dirpath.is_absolute()
+                for f in filenames:
+                    assert not f.is_absolute()
+                    # The file path should include subdirectory name
+                    if "subdir" in str(f):
+                        assert f.parts[0] == "root_dir"
+
+    # =======================================================================
+    # Tests for list_subdirs method
+    # =======================================================================
+
+    def test_list_subdirs_basic(self, dm, temp_dir):
+        """Test basic subdirectory listing includes base_dir."""
+        # Create nested directory structure
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "dir2").mkdir()
+        (temp_dir / "dir1" / "dir2" / "dir3").mkdir()
+        (temp_dir / "file1.txt").write_text("content")
+        
+        subdirs = dm.list_subdirs()
+        
+        # Should include base_dir + all subdirectories
+        assert len(subdirs) == 4
+        # All should be directories
+        assert all(p.is_dir() for p in subdirs)
+        # Base dir should be in results
+        assert temp_dir in subdirs
+        
+    def test_list_subdirs_max_depth_0(self, dm, temp_dir):
+        """Test list_subdirs with max_depth=0 returns only base_dir."""
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "dir2").mkdir()
+        
+        subdirs = dm.list_subdirs(max_depth=0)
+        
+        # Only base_dir at depth 0
+        assert len(subdirs) == 1
+        assert subdirs[0] == temp_dir
+        
+    def test_list_subdirs_max_depth_1(self, dm, temp_dir):
+        """Test list_subdirs with max_depth=1 returns base_dir + immediate children."""
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir2").mkdir()
+        (temp_dir / "dir1" / "dir3").mkdir()
+        
+        subdirs = dm.list_subdirs(max_depth=1)
+        
+        # base_dir + 2 immediate children = 3
+        assert len(subdirs) == 3
+        assert temp_dir in subdirs
+        
+    def test_list_subdirs_max_depth_2(self, dm, temp_dir):
+        """Test list_subdirs with max_depth=2 includes nested directories."""
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "dir2").mkdir()
+        (temp_dir / "dir1" / "dir2" / "dir3").mkdir()
+        
+        subdirs = dm.list_subdirs(max_depth=2)
+        
+        # base_dir + dir1 + dir2 = 3
+        assert len(subdirs) == 3
+        
+    def test_list_subdirs_empty_dir(self, dm, temp_dir):
+        """Test list_subdirs on empty directory returns only base_dir."""
+        subdirs = dm.list_subdirs()
+        
+        assert len(subdirs) == 1
+        assert subdirs[0] == temp_dir
+        
+    def test_list_subdirs_sort_by_name(self, dm, temp_dir):
+        """Test list_subdirs sorted by name."""
+        (temp_dir / "z_dir").mkdir()
+        (temp_dir / "a_dir").mkdir()
+        (temp_dir / "m_dir").mkdir()
+        
+        subdirs = dm.list_subdirs(sort_by='name')
+        names = [p.name for p in subdirs]
+        
+        # All 4 directories should be present (base_dir + 3 subdirs)
+        assert len(names) == 4
+        # Should be sorted alphabetically
+        assert names == sorted(names)
+        
+        # Reverse sort
+        subdirs_rev = dm.list_subdirs(sort_by='name', reverse=True)
+        names_rev = [p.name for p in subdirs_rev]
+        assert names_rev == sorted(names_rev, reverse=True)
+        
+    def test_list_subdirs_sort_by_mtime(self, dm, temp_dir):
+        """Test list_subdirs sorted by modification time."""
+        (temp_dir / "old_dir").mkdir()
+        time.sleep(0.01)
+        (temp_dir / "new_dir").mkdir()
+        
+        subdirs = dm.list_subdirs(sort_by='mtime')
+        names = [p.name for p in subdirs]
+        
+        # All 3 directories should be present (base_dir + 2 subdirs)
+        assert len(names) == 3
+        # Old dir should come before new dir (by mtime)
+        assert names.index('old_dir') < names.index('new_dir')
+        
+    def test_list_subdirs_sort_by_size(self, dm, temp_dir):
+        """Test list_subdirs sorted by directory size."""
+        (temp_dir / "small_dir").mkdir()
+        (temp_dir / "small_dir" / "small.txt").write_text("small")
+        (temp_dir / "large_dir").mkdir()
+        (temp_dir / "large_dir" / "large.txt").write_text("much larger content here")
+        
+        subdirs = dm.list_subdirs(sort_by='size')
+        names = [p.name for p in subdirs]
+        
+        # Base dir + small_dir + large_dir
+        assert len(names) == 3
+        # Large dir should have larger size than small_dir
+        assert names.index('large_dir') > names.index('small_dir')
+        
+    def test_list_subdirs_relative_true(self, dm, temp_dir):
+        """Test list_subdirs returns relative paths when relative=True."""
+        (temp_dir / "dir1").mkdir()
+        (temp_dir / "dir1" / "dir2").mkdir()
+        
+        subdirs = dm.list_subdirs(relative=True)
+        
+        # All paths should be relative
+        assert all(not p.is_absolute() for p in subdirs)
+        # Names should be correct (base_dir becomes '.', which has empty name)
+        names = [p.name for p in subdirs]
+        assert '' in names  # base_dir relative path is '.' which has empty name
+        assert 'dir1' in names
+        assert 'dir2' in names
+        
+    def test_list_subdirs_relative_false(self, dm, temp_dir):
+        """Test list_subdirs returns absolute paths by default."""
+        (temp_dir / "dir1").mkdir()
+        
+        subdirs = dm.list_subdirs()
+        
+        # All paths should be absolute
+        assert all(p.is_absolute() for p in subdirs)
+        # Base dir should be temp_dir
+        assert subdirs[0] == temp_dir
+
+    # =======================================================================
+    # Tests for scan method (canonical directory listing)
+    # =======================================================================
+
+    def test_scan_not_a_directory(self, dm, temp_dir):
+        """Test scan raises error when path is not a directory."""
+        (temp_dir / "file.txt").write_text("content")
+
+        with pytest.raises(NotADirectoryError, match="Path is not a directory"):
+            dm.scan("file.txt")
+
+    def test_scan_nonexistent(self, dm, temp_dir):
+        """Test scan raises error when path does not exist."""
+        with pytest.raises(NotADirectoryError, match="does not exist"):
+            dm.scan("nonexistent")
+
+    def test_scan_subdirectory(self, dm, temp_dir):
+        """Test scan on a subdirectory."""
+        (temp_dir / "subdir").mkdir()
+        (temp_dir / "subdir" / "nested.txt").write_text("content")
+
+        contents = dm.scan("subdir")
+        names = [p.name for p in contents]
+        assert "nested.txt" in names

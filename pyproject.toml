@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fsutils"
-version = "0.1.0"
+version = "0.1.1"
 description = "File system utilities for working with files and directories"
 readme = "README.md"
 license = {text = "MIT"}

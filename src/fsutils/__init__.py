@@ -21,7 +21,7 @@ Quick Example:
     >>> io.write_json("output.json", data)
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Import the DirManager class from paths (the canonical implementation)
 from fsutils.paths import DirManager
@@ -31,6 +31,9 @@ FileSystem = DirManager
 
 # Import the io module for standalone file operations
 from fsutils import io
+
+# Import the dirs module for directory operations
+from fsutils import dirs
 
 # Re-export key functions from io for convenience
 from fsutils.io import (
@@ -64,6 +67,7 @@ __all__ = [
     "FileSystem",  # Backward compatibility alias
     "paths",
     "io",
+    "dirs",
     # Re-exported io functions for convenience
     "read_json",
     "write_json",

@@ -123,44 +123,72 @@ class DirManager:
         p = self._resolve_path(path)
         p.mkdir(parents=True, exist_ok=exist_ok)
         return p
-    
-    def list_dir(self, path: PathLike = '.', sort_by: SortByType = None, reverse: bool = False) -> List[pathlib.Path]:
-        """List contents of a directory.
-        
-        Args:
-            path: Directory path to list
-            sort_by: Sort criteria - 'name' (alphabetically), 'mtime' (modification time),
-                     'size' (file size), or None for no sorting (default)
-            reverse: If True, reverse the sort order (default: False)
+
+    def _format_path(self, p: pathlib.Path, relative: bool) -> pathlib.Path:
+        """Helper to handle the relativity transformation."""
+        return p.relative_to(self.base_dir) if relative else p
+
+    def scan(
+            self, 
+            path: PathLike = '.', 
+            sort_by: SortByType = None, 
+            reverse: bool = False, 
+            relative: bool = False
+        ) -> List[pathlib.Path]:
+            """
+            Scan directory contents with optimized metadata sorting.
             
-        Returns:
-            List of Path objects for the directory contents
+            Uses a Schwartzian Transform for O(N) metadata retrieval instead of 
+            O(N log N) stat calls in traditional sorting approaches.
             
-        Raises:
-            FileNotFoundError: If the directory does not exist
-            NotADirectoryError: If the path is not a directory
-        """
-        p = self._resolve_path(path)
-        if not p.exists():
-            raise FileNotFoundError(f"Directory does not exist: {p}")
-        if not p.is_dir():
-            raise NotADirectoryError(f"Path is not a directory: {p}")
-        
-        contents = list(p.iterdir())
-        
-        if sort_by is not None:
-            if sort_by == 'name':
-                contents.sort(key=lambda x: x.name, reverse=reverse)
-            elif sort_by == 'mtime':
-                contents.sort(key=lambda x: x.stat().st_mtime, reverse=reverse)
+            Args:
+                path: Directory path to scan (default: '.')
+                sort_by: Sort criteria - 'name' (alphabetically, case-insensitive),
+                        'mtime' (modification time), 'size' (file size), or None (default)
+                reverse: If True, reverse the sort order (default: False)
+                relative: If True, return paths relative to base_dir (default: False)
+                
+            Returns:
+                List of Path objects for the directory contents
+                
+            Raises:
+                NotADirectoryError: If path is not a directory or does not exist
+                
+            Note:
+                This is the canonical method for listing directory contents. 
+                The 'list_dir' method is deprecated and calls this method.
+            """
+
+
+            p = self._resolve_path(path)
+            if not p.is_dir():
+                raise NotADirectoryError(f"Path is not a directory or does not exist: {p}")
+            
+            # 1. Retrieval (The "Decorate" phase)
+            # We fetch the stat object once and store it in a tuple with the path
+            if sort_by == 'mtime':
+                decorated = [(f.stat().st_mtime, f) for f in p.iterdir()]
             elif sort_by == 'size':
-                contents.sort(key=lambda x: x.stat().st_size if x.is_file() else 0, reverse=reverse)
-        
-        return contents
+                # Folders don't have 'size' in the traditional sense; default to 0
+                decorated = [(f.stat().st_size if f.is_file() else 0, f) for f in p.iterdir()]
+            elif sort_by == 'name':
+                decorated = [(f.name.lower(), f) for f in p.iterdir()]
+            else:
+                # No sorting needed, just grab the paths
+                results = list(p.iterdir())
+                return [self._format_path(f, relative) for f in results]
+
+            # 2. Sort (The "Sort" phase)
+            # Python's Timsort is stable and highly optimized for tuples
+            decorated.sort(key=lambda x: x[0], reverse=reverse)
+
+            # 3. Extraction (The "Undecorate" phase)
+            return [self._format_path(f, relative) for _, f in decorated]
     
     def list_files(self, max_depth: Optional[int] = None, 
                    extensions: Optional[List[str]] = None,
-                   sort_by: SortByType = None, reverse: bool = False) -> List[pathlib.Path]:
+                   sort_by: SortByType = None, reverse: bool = False,
+                   relative: bool = False) -> List[pathlib.Path]:
         """List files in a directory recursively with optional filtering.
         
         Args:   
@@ -169,6 +197,7 @@ class DirManager:
             sort_by: Sort criteria - 'name' (alphabetically), 'mtime' (modification time),
                      'size' (file size), or None for no sorting (default)
             reverse: If True, reverse the sort order (default: False)
+            relative: If True, return paths relative to base_dir (default: False)
             
         Returns:
             List of pathlib.Path objects for matching files
@@ -215,10 +244,14 @@ class DirManager:
             elif sort_by == 'size':
                 files.sort(key=lambda x: x.stat().st_size, reverse=reverse)
         
+        if relative:
+            files = [pathlib.Path(x.relative_to(self.base_dir)) for x in files]
+        
         return files
     
     def list_images(self, max_depth: Optional[int] = None,
-                    sort_by: SortByType = None, reverse: bool = False) -> List[pathlib.Path]:
+                    sort_by: SortByType = None, reverse: bool = False,
+                    relative: bool = False) -> List[pathlib.Path]:
         """List all image files in a directory recursively.
         
         This is a convenience method that calls list_files() with the
@@ -229,13 +262,87 @@ class DirManager:
             sort_by: Sort criteria - 'name' (alphabetically), 'mtime' (modification time),
                      'size' (file size), or None for no sorting (default)
             reverse: If True, reverse the sort order (default: False)
+            relative: If True, return paths relative to base_dir (default: False)
             
         Returns:
             List of pathlib.Path objects for image files
         """
         from fsutils.io import IMAGE_EXTENSIONS
         return self.list_files(max_depth=max_depth, extensions=IMAGE_EXTENSIONS,
-                               sort_by=sort_by, reverse=reverse)
+                               sort_by=sort_by, reverse=reverse, relative=relative)
+    
+    @staticmethod
+    def _get_dir_size(path: pathlib.Path) -> int:
+        """Get total size of a directory.
+        
+        Args:
+            path: Path to the directory
+            
+        Returns:
+            Total size in bytes of all files in the directory
+        """
+        total_size = 0
+        try:
+            for item in path.rglob('*'):
+                if item.is_file():
+                    total_size += item.stat().st_size
+        except PermissionError:
+            pass
+        return total_size
+    
+    def list_subdirs(self, max_depth: Optional[int] = None,
+                     sort_by: SortByType = None, reverse: bool = False,
+                     relative: bool = False) -> List[pathlib.Path]:
+        """List all subdirectories in a directory recursively.
+        
+        Args:
+            max_depth: Maximum depth of recursion (None for unlimited, 0 = base_dir only)
+            sort_by: Sort criteria - 'name' (alphabetically), 'mtime' (modification time),
+                     'size' (total directory size), or None for no sorting (default)
+            reverse: If True, reverse the sort order (default: False)
+            relative: If True, return paths relative to base_dir (default: False)
+            
+        Returns:
+            List of pathlib.Path objects for subdirectories including base_dir at depth 0
+        """
+        subdirs = []
+        
+        def _walk(current_path: pathlib.Path, current_depth: int = 0):
+            # Add current directory to results (depth 0 = base_dir)
+            if current_depth >= 0:
+                subdirs.append(current_path)
+            
+            # Stop recursion if max_depth is reached
+            # current_depth + 1 is the next level, so if we've reached max_depth, don't go deeper
+            if max_depth is not None and current_depth >= max_depth:
+                return
+            
+            # Process all items in the current directory
+            try:
+                for item in current_path.iterdir():
+                    if item.is_dir():
+                        # Recursively process subdirectories
+                        _walk(item, current_depth + 1)
+            except PermissionError:
+                # Skip directories we don't have permission to access
+                pass
+        
+        # Start recursive walk from base directory (depth 0)
+        _walk(self.base_dir, 0)
+        
+        # Apply sorting if requested
+        if sort_by is not None:
+            if sort_by == 'name':
+                subdirs.sort(key=lambda x: x.name, reverse=reverse)
+            elif sort_by == 'mtime':
+                subdirs.sort(key=lambda x: x.stat().st_mtime, reverse=reverse)
+            elif sort_by == 'size':
+                subdirs.sort(key=lambda x: self._get_dir_size(x), reverse=reverse)
+        
+        if relative:
+            subdirs = [pathlib.Path(x.relative_to(self.base_dir)) for x in subdirs]
+        
+        return subdirs
     
     # =========================================================================
     # File Operations (require base_dir for relative paths)
@@ -324,24 +431,29 @@ class DirManager:
     # Path Pattern Matching
     # =========================================================================
     
-    def glob(self, pattern: str) -> List[pathlib.Path]:
+    def glob(self, pattern: str, relative: bool = False) -> List[pathlib.Path]:
         """Find paths matching a glob pattern.
         
         Args:
             pattern: Glob pattern to match
+            relative: If True, return paths relative to base_dir (default: False)
             
         Returns:
             List of matching Path objects
         """
-        return list(self.base_dir.glob(pattern))
+        results = list(self.base_dir.glob(pattern))
+        if relative:
+            results = [pathlib.Path(x.relative_to(self.base_dir)) for x in results]
+        return results
     
-    def walk(self, top: PathLike = '.') -> Iterator[tuple[pathlib.Path, List[pathlib.Path], List[pathlib.Path]]]:
+    def walk(self, top: PathLike = '.', relative: bool = False) -> Iterator[tuple[pathlib.Path, List[pathlib.Path], List[pathlib.Path]]]:
         """Walk a directory tree.
         
         Similar to os.walk, but returns Path objects instead of strings.
         
         Args:
             top: Directory to start walking from
+            relative: If True, return paths relative to base_dir (default: False)
             
         Yields:
             Tuples of (dirpath, dirnames, filenames) where:
@@ -361,10 +473,18 @@ class DirManager:
         
         for dirpath, dirnames, filenames in os.walk(top_path):
             dir_path = pathlib.Path(dirpath)
+            # Convert to Path objects
+            dirnames = [pathlib.Path(d) for d in dirnames]
+            filenames = [pathlib.Path(f) for f in filenames]
+            if relative:
+                dir_path = pathlib.Path(dir_path.relative_to(self.base_dir))
+                # Compute relative paths from full absolute paths
+                dirnames = [pathlib.Path(pathlib.Path(dirpath, d).relative_to(self.base_dir)) for d in dirnames]
+                filenames = [pathlib.Path(pathlib.Path(dirpath, f).relative_to(self.base_dir)) for f in filenames]
             yield (
                 dir_path,
-                [dir_path / d for d in dirnames],
-                [dir_path / f for f in filenames]
+                dirnames,
+                filenames
             )
 
     # =========================================================================

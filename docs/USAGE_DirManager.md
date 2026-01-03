@@ -10,6 +10,12 @@ For quick start examples, see [README.md](README.md).
 - [Initialization](#initialization)
 - [Dunder Methods](#dunder-methods)
 - [Directory Operations](#directory-operations)
+  - [create_dir](#create_dirpath-exist_oktrue)
+  - [scan](#scanpath-sort_bynone-reversefals-relativefalse)
+  - [list_files](#list_filesmax_depthnone-extensionsnone-sort_bynone-reversefals)
+  - [list_images](#list_imagesmax_depthnone-sort_bynone-reversefals)
+  - [list_subdirs](#list_subdirsmax_depthnone-sort_bynone-reversefals)
+  - [delete_dir](#delete_dirpath-recursivefalse)
 - [File Operations](#file-operations)
 - [Path Pattern Matching](#path-pattern-matching)
 - [Directory Statistics](#directory-statistics)
@@ -199,6 +205,47 @@ contents = dm.list_dir(sort_by='size')
 **Raises:**
 - `FileNotFoundError` if directory doesn't exist
 - `NotADirectoryError` if path is not a directory
+
+---
+
+### scan(path='.', sort_by=None, reverse=False, relative=False)
+
+Scan directory contents with optimized metadata sorting.
+
+Uses a Schwartzian Transform for O(N) metadata retrieval instead of O(N log N) stat calls in traditional sorting approaches.
+
+```python
+# Scan base directory
+contents = dm.scan()
+
+# Scan subdirectory
+contents = dm.scan("subfolder")
+
+# Sort alphabetically (case-insensitive)
+contents = dm.scan(sort_by='name')
+
+# Sort by modification time (newest first)
+contents = dm.scan(sort_by='mtime', reverse=True)
+
+# Sort by size (largest first)
+contents = dm.scan(sort_by='size', reverse=True)
+
+# Return relative paths
+contents = dm.scan(relative=True)
+```
+
+**Parameters:**
+- `path`: Directory path to scan (default: '.')
+- `sort_by`: Sort criteria - 'name' (case-insensitive), 'mtime', 'size', or None
+- `reverse`: Reverse the sort order (default: False)
+- `relative`: Return paths relative to base_dir (default: False)
+
+**Returns:** List of `pathlib.Path` objects
+
+**Raises:**
+- `NotADirectoryError` if path is not a directory or does not exist
+
+**Note:** This is the canonical method for listing directory contents.
 
 ---
 
